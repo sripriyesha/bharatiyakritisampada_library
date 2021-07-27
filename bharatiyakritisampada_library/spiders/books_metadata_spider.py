@@ -10,10 +10,12 @@ from scrapy.http import Request
 
 class BooksMetadataSpider(scrapy.Spider):
     name = "books_metadata"
+    download_timeout = 600
 
     def __init__(self, page=None, *args, **kwargs):
         super(BooksMetadataSpider, self).__init__(*args, **kwargs)
         self.page = page
+        self.logger.info(f"Crawling for page {page}")
         with open(f"./links/links_page_{page}.txt", "rt") as f:
             self.start_urls = [url.strip() for url in f.readlines()]
 
@@ -129,21 +131,24 @@ class BooksMetadataSpider(scrapy.Spider):
             manuscript_number = get_next_div_text("Acc No./Man No :")
 
             pdf_webpage_link_abs_url = response.urljoin(pdf_webpage_link)
+            filename = (title + "_" + manuscript_number).replace(" ", "_").replace(
+                "/", "-"
+            ) + ".pdf"
 
-            self.logger.info("getting pdf container webpage")
-            self.logger.info(pdf_webpage_link_abs_url)
+            if not os.path.isfile(f"./books/page_{self.page}/{filename}"):
+                self.logger.info("getting pdf container webpage")
+                self.logger.info(pdf_webpage_link_abs_url)
+                print(filename)
 
-            filename = (title + "_" + manuscript_number).replace(" ", "_") + ".pdf"
+                # yield Request(
+                #     pdf_webpage_link_abs_url,
+                #     callback=self.get_pdf,
+                #     cb_kwargs=dict(filename=filename),
+                #     dont_filter=True,
+                # )
 
-            # yield Request(
-            #     pdf_webpage_link_abs_url,
-            #     callback=self.get_pdf,
-            #     cb_kwargs=dict(filename=filename),
-            #     dont_filter=True,
-            # )
-
-        self.logger.info("getting metadata")
-        yield get_metadata(filename)
+        # self.logger.info("getting metadata")
+        # yield get_metadata(filename)
 
     def get_pdf(self, response, filename):
         self.logger.info("getting pdf url and requesting the file")
@@ -156,6 +161,9 @@ class BooksMetadataSpider(scrapy.Spider):
         file_relative_url = script_text.re(pattern)[0]
 
         file_abs_url = response.urljoin(file_relative_url)
+        print(file_abs_url)
+        print(filename)
+
         yield Request(
             file_abs_url,
             callback=self.save_file,
@@ -166,7 +174,7 @@ class BooksMetadataSpider(scrapy.Spider):
     def save_file(self, response, filename):
         Path(f"./books/page_{self.page}/").mkdir(parents=True, exist_ok=True)
 
-        path = f"./books/page_{self.page}/" + filename
+        path = f"./books/page_{self.page}/{filename}"
         self.logger.info("Saving file %s", path)
         with open(path, "wb") as f:
             f.write(response.body)
